@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "type": "module",
   "directories": {
     "dist": "dist"
   },
@@ -14,6 +15,7 @@
   "scripts": {
     "dev": "tsup src/index.ts --format cjs,esm --sourcemap --dts --publicDir public --watch --onSuccess \"node --enable-source-maps --no-node-snapshot dist/index.js\"",
     "start": "node --enable-source-maps --no-node-snapshot dist/index.js",
+    "startx": "node -r esm --enable-source-maps --no-node-snapshot dist/index.js",
     "build": "tsup src/index.ts --format cjs,esm --sourcemap --dts --clean --publicDir public"
   },
   "author": "Vinlic",
@@ -26,6 +28,7 @@
     "crc-32": "^1.2.2",
     "cron": "^3.1.6",
     "date-fns": "^3.3.1",
+    "esm": "^3.2.25",
     "eventsource-parser": "^1.1.2",
     "fs-extra": "^11.2.0",
     "koa": "^2.15.0",

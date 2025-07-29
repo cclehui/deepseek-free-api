@@ -141,6 +141,7 @@ async function acquireToken(refreshToken: string): Promise<string> {
     result = await requestToken(refreshToken);
     accessTokenMap.set(refreshToken, result);
   }
+  // console.log("accessTokenMap", accessTokenMap)
   return result.accessToken;
 }
 
@@ -245,6 +246,7 @@ async function createCompletion(
 
     // 消息预处理
     const prompt = messagesPrepare(messages);
+    logger.info('your prompt is :', prompt)
 
     // 解析引用对话ID
     const [refSessionId, refParentMsgId] = refConvId?.split('@') || [];
@@ -546,7 +548,7 @@ function checkResult(result: AxiosResponse, refreshToken: string) {
  * @param model 模型名称
  * @param stream 消息流
  */
-async function receiveStream(model: string, stream: any, refConvId?: string): Promise<any> {
+async function receiveStream_OLD(model: string, stream: any, refConvId?: string): Promise<any> {
   let thinking = false;
   const isSearchModel = model.includes('search');
   const isThinkingModel = model.includes('think') || model.includes('r1');
@@ -575,6 +577,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         if (event.type !== "event" || event.data.trim() == "[DONE]") return;
         // 解析JSON
         const result = _.attempt(() => JSON.parse(event.data));
+        console.log("event_data:", result)
         if (_.isError(result))
           throw new Error(`Stream response invalid: ${event.data}`);
         if (!result.choices || !result.choices[0] || !result.choices[0].delta)
@@ -618,6 +621,76 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
     stream.on("data", (buffer) => parser.feed(buffer.toString()));
     stream.once("error", (err) => reject(err));
     stream.once("close", () => resolve(data));
+  });
+}
+
+// copy from this uri
+// https://github.com/Fu-Jie/deepseek-free-api/blob/master/src/api/controllers/chat.ts
+async function receiveStream(model: string, stream: any, refConvId?: string): Promise<any> {
+  const { createParser } = await import("eventsource-parser");
+  logger.info(`[NON-STREAM] Receiving stream to accumulate full response for model: ${model}`);
+  let accumulatedContent = "";
+  let accumulatedThinkingContent = "";
+  let messageId = '';
+  const created = util.unixTimestamp();
+  let currentPath = ''; // State to track the current content type
+
+  return new Promise((resolve, reject) => {
+    const parser = createParser((event) => {
+      try {
+        if (event.type !== "event" || !event.data) return;
+
+        const chunk = _.attempt(() => JSON.parse(event.data));
+        if (_.isError(chunk)) return;
+        logger.debug(`event.data:${event.data}`)
+
+        if (chunk.response_message_id && !messageId) {
+          messageId = chunk.response_message_id;
+        }
+
+        // Update current path if specified
+        if (chunk.p === 'response/thinking_content') {
+          currentPath = 'thinking';
+        } else if (chunk.p === 'response/content') {
+          currentPath = 'content';
+        }
+
+        // Append value to the correct accumulator based on current path
+        if (typeof chunk.v === 'string') {
+          if (currentPath === 'thinking') {
+            accumulatedThinkingContent += chunk.v;
+          } else if (currentPath === 'content') {
+            accumulatedContent += chunk.v;
+          }
+        }
+      } catch (err) {
+        logger.error(`[NON-STREAM] Error parsing chunk: ${err}`);
+      }
+    });
+
+    stream.on("data", (buffer: Buffer) => parser.feed(buffer.toString()));
+    stream.once("error", (err) => reject(err));
+    stream.once("close", () => {
+      logger.info(`[NON-STREAM] Stream closed. Accumulated content length: ${accumulatedContent.length}`);
+      const finalResponse = {
+        id: `${refConvId}@${messageId}`,
+        model,
+        object: "chat.completion",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: accumulatedContent.trim(),
+            reasoning_content: accumulatedThinkingContent.trim(),
+          },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }, // Mocked
+        created,
+      };
+      logger.success(`[NON-STREAM] Resolving with final response: ${JSON.stringify(finalResponse, null, 2)}`);
+      resolve(finalResponse);
+    });
   });
 }
 

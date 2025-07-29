@@ -30,6 +30,7 @@ export default {
             const token = _.sample(tokens);
             let { model, conversation_id: convId, messages, stream } = request.body;
             model = model.toLowerCase();
+            console.log(`111111, ${model}, ${stream}, ${token}`)
             if (stream) {
                 const stream = await chat.createCompletionStream(model, messages, token, convId);
                 return new Response(stream, {
