@@ -31,7 +31,14 @@ npm run build && npm run start
 
 启动服务
 
-```shell
+```bash
+# dev start (easy start)
+node dist/index.js
+
+```
+
+```bash
+# manage by pm2
 pm2 start dist/index.js --name "deepseek-free-api"
 
 pm2 list
